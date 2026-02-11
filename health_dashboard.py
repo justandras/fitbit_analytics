@@ -1970,7 +1970,7 @@ def main():
     st.markdown('<div class="section-header">Analyse du stress</div>', unsafe_allow_html=True)
     
     display_note("Le score de stress combine plusieurs metriques pour estimer le niveau de stress du corps. "
-                "Un score eleve sur une periode prolongee peut indiquer un besoin de recuperation.")
+                "Un score faible sur une periode prolongee peut indiquer un besoin de recuperation.")
     
     if not stress_df.empty:
         stress_data = stress_df[stress_df['STRESS_SCORE'] > 0]
