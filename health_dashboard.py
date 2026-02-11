@@ -947,10 +947,10 @@ def create_stress_chart(stress_df):
         hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Stress: %{y:.0f}/100<extra></extra>'
     ))
     
-    fig.add_hrect(y0=0, y1=25, line_width=0, fillcolor="green", opacity=0.1, annotation_text="Faible")
-    fig.add_hrect(y0=25, y1=50, line_width=0, fillcolor="yellow", opacity=0.1)
-    fig.add_hrect(y0=50, y1=75, line_width=0, fillcolor="orange", opacity=0.1)
-    fig.add_hrect(y0=75, y1=100, line_width=0, fillcolor="red", opacity=0.1, annotation_text="Eleve")
+    fig.add_hrect(y0=0, y1=25, line_width=0, fillcolor="red", opacity=0.1, annotation_text="Eleve")
+    fig.add_hrect(y0=25, y1=50, line_width=0, fillcolor="orange", opacity=0.1)
+    fig.add_hrect(y0=50, y1=75, line_width=0, fillcolor="yellow", opacity=0.1)
+    fig.add_hrect(y0=75, y1=100, line_width=0, fillcolor="green", opacity=0.1, annotation_text="Faible")
     
     fig.update_layout(
         title=dict(text="Score de stress continu", font=dict(size=16)),
@@ -1060,7 +1060,7 @@ def analyze_health(hr_summary, sleep_df, hrv_df, spo2_df, stress_df):
         stress_data = stress_df[stress_df['STRESS_SCORE'] > 0]['STRESS_SCORE']
         if len(stress_data) > 0:
             avg_stress = stress_data.mean()
-            if avg_stress > 80:
+            if avg_stress < 30:
                 warnings.append(f"Niveau de stress eleve: {avg_stress:.0f}/100")
             else:
                 info.append(f"Niveau de stress: {avg_stress:.0f}/100")
