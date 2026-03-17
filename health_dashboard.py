@@ -49,7 +49,7 @@ def generate_pdf_from_html(html_content):
         return None
 
 st.set_page_config(
-    page_title="Tableau de bord sante Fitbit",
+    page_title="Fitbit Health Dashboard",
     page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -58,6 +58,24 @@ st.set_page_config(
 import streamlit.components.v1 as components
 import base64
 import io
+
+def _load_translations(lang: str) -> dict:
+    lang = (lang or "en").lower()
+    if lang not in {"en", "fr"}:
+        lang = "en"
+    i18n_path = Path(__file__).parent / "i18n" / f"{lang}.json"
+    try:
+        return json.loads(i18n_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _t(translations: dict, key: str, **kwargs) -> str:
+    text = translations.get(key, key)
+    try:
+        return text.format(**kwargs)
+    except Exception:
+        return text
 
 st.markdown("""
 <style>
@@ -1014,11 +1032,11 @@ def analyze_health(hr_summary, sleep_df, hrv_df, spo2_df, stress_df):
             avg_hr = recent_hr.mean()
             
             if latest_hr > 100:
-                alerts.append(f"Frequence cardiaque au repos elevee: {latest_hr:.1f} bpm (Normale: 60-100)")
+                alerts.append(_t(st.session_state.get("_i18n", {}), "analysis.hr_rest_high", value=latest_hr))
             elif latest_hr < 50:
-                warnings.append(f"Frequence cardiaque au repos basse: {latest_hr:.1f} bpm")
+                warnings.append(_t(st.session_state.get("_i18n", {}), "analysis.hr_rest_low", value=latest_hr))
             else:
-                info.append(f"Frequence cardiaque normale: {latest_hr:.1f} bpm (Moyenne: {avg_hr:.1f})")
+                info.append(_t(st.session_state.get("_i18n", {}), "analysis.hr_rest_normal", value=latest_hr, avg=avg_hr))
     
     # Analyse SpO2
     if not spo2_df.empty and 'average_value' in spo2_df.columns:
@@ -1026,11 +1044,11 @@ def analyze_health(hr_summary, sleep_df, hrv_df, spo2_df, stress_df):
         min_spo2 = spo2_df['lower_bound'].min() if 'lower_bound' in spo2_df.columns else spo2_df['average_value'].min()
         
         if min_spo2 < 90:
-            alerts.append(f"Saturation en oxygene basse detectee: {min_spo2:.1f}%")
+            alerts.append(_t(st.session_state.get("_i18n", {}), "analysis.spo2_low_detected", value=min_spo2))
         elif avg_spo2 < 94:
-            warnings.append(f"Saturation en oxygene moyenne: {avg_spo2:.1f}%")
+            warnings.append(_t(st.session_state.get("_i18n", {}), "analysis.spo2_avg_low", value=avg_spo2))
         else:
-            info.append(f"Saturation en oxygene normale: {avg_spo2:.1f}%")
+            info.append(_t(st.session_state.get("_i18n", {}), "analysis.spo2_normal", value=avg_spo2))
     
     # Analyse sommeil
     if not sleep_df.empty and 'minutes_asleep' in sleep_df.columns:
@@ -1039,21 +1057,21 @@ def analyze_health(hr_summary, sleep_df, hrv_df, spo2_df, stress_df):
             avg_sleep = main_sleep['minutes_asleep'].mean() / 60
             
             if avg_sleep < 5:
-                alerts.append(f"Duree de sommeil insuffisante: {avg_sleep:.1f} heures")
+                alerts.append(_t(st.session_state.get("_i18n", {}), "analysis.sleep_too_low", value=avg_sleep))
             elif avg_sleep < 6:
-                warnings.append(f"Duree de sommeil courte: {avg_sleep:.1f} heures (Recommande: 7-9)")
+                warnings.append(_t(st.session_state.get("_i18n", {}), "analysis.sleep_short", value=avg_sleep))
             elif avg_sleep > 10:
-                warnings.append(f"Duree de sommeil longue: {avg_sleep:.1f} heures")
+                warnings.append(_t(st.session_state.get("_i18n", {}), "analysis.sleep_long", value=avg_sleep))
             else:
-                info.append(f"Duree de sommeil adequate: {avg_sleep:.1f} heures")
+                info.append(_t(st.session_state.get("_i18n", {}), "analysis.sleep_ok", value=avg_sleep))
     
     # Analyse HRV
     if not hrv_df.empty and 'rmssd' in hrv_df.columns:
         avg_hrv = hrv_df['rmssd'].mean()
         if avg_hrv < 20:
-            warnings.append(f"VFC basse: {avg_hrv:.1f} ms (peut indiquer stress ou surmenage)")
+            warnings.append(_t(st.session_state.get("_i18n", {}), "analysis.hrv_low", value=avg_hrv))
         else:
-            info.append(f"VFC: {avg_hrv:.1f} ms")
+            info.append(_t(st.session_state.get("_i18n", {}), "analysis.hrv_ok", value=avg_hrv))
     
     # Analyse stress
     if not stress_df.empty and 'STRESS_SCORE' in stress_df.columns:
@@ -1061,9 +1079,9 @@ def analyze_health(hr_summary, sleep_df, hrv_df, spo2_df, stress_df):
         if len(stress_data) > 0:
             avg_stress = stress_data.mean()
             if avg_stress < 30:
-                warnings.append(f"Niveau de stress eleve: {avg_stress:.0f}/100")
+                warnings.append(_t(st.session_state.get("_i18n", {}), "analysis.stress_high", value=avg_stress))
             else:
-                info.append(f"Niveau de stress: {avg_stress:.0f}/100")
+                info.append(_t(st.session_state.get("_i18n", {}), "analysis.stress_level", value=avg_stress))
     
     return alerts, warnings, info
 
@@ -1085,14 +1103,15 @@ def display_note(text):
 # GENERATION HTML POUR IMPRESSION
 # ==============================================================================
 
-def generate_printable_html(profile, hr_summary, sleep_df, hrv_df, spo2_df, stress_df, 
-                            detailed_hr_df, detailed_steps_df, chart_images=None):
+def generate_printable_html(profile, hr_summary, sleep_df, hrv_df, spo2_df, stress_df,
+                            detailed_hr_df, detailed_steps_df, chart_images=None, tr=None):
     """
     Genere un HTML autonome optimise pour l'impression A4 avec graphiques PNG integres.
     """
     from datetime import datetime
     
-    gen_date = datetime.now().strftime('%d %B %Y')
+    tr = tr or st.session_state.get("_i18n", {})
+    gen_date = datetime.now().strftime('%Y-%m-%d')
     chart_images = chart_images or {}
     
     # Infos utilisateur
@@ -1219,7 +1238,7 @@ def generate_printable_html(profile, hr_summary, sleep_df, hrv_df, spo2_df, stre
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rapport sante Fitbit - {name}</title>
+    <title>{_t(tr, "report.title")} - {name}</title>
     <style>
         /* Reset et base */
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -1452,56 +1471,52 @@ def generate_printable_html(profile, hr_summary, sleep_df, hrv_df, spo2_df, stre
 </head>
 <body>
     <button class="print-btn no-print" onclick="window.print()">
-        Imprimer / sauvegarder PDF
+        {_t(tr, "report.print_button")}
     </button>
     
     <div class="instructions no-print">
-        <strong>Instructions pour sauvegarder en PDF :</strong><br>
-        1. Cliquez sur le bouton rouge "Imprimer / sauvegarder PDF"<br>
-        2. Dans la boite de dialogue, selectionnez "Enregistrer au format PDF"<br>
-        3. Choisissez le format A4 et les marges par defaut<br>
-        4. Cliquez sur "Enregistrer"
+        <strong>{_t(tr, "report.instructions_title")}</strong><br>
+        {_t(tr, "report.instructions_body").replace("\\n", "<br>")}
     </div>
     
     <div class="header">
-        <h1>Tableau de bord sante Fitbit</h1>
-        <div class="date">Rapport detaille continu - Genere le {gen_date}</div>
+        <h1>{_t(tr, "report.title")}</h1>
+        <div class="date">{_t(tr, "report.subtitle")} - {_t(tr, "app.generated_on", datetime=gen_date)}</div>
     </div>
     
     <div class="section">
-        <div class="section-header">Informations</div>
+        <div class="section-header">{_t(tr, "report.section.information")}</div>
         <div class="metrics">
             <div class="metric">
-                <div class="metric-label">Nom</div>
+                <div class="metric-label">{_t(tr, "metric.name")}</div>
                 <div class="metric-value">{name}</div>
             </div>
             <div class="metric">
-                <div class="metric-label">Age / Sexe</div>
+                <div class="metric-label">{_t(tr, "metric.age_gender")}</div>
                 <div class="metric-value">{age_gender}</div>
             </div>
             <div class="metric">
-                <div class="metric-label">Taille / Poids / IMC</div>
+                <div class="metric-label">{_t(tr, "metric.weight_bmi")}</div>
                 <div class="metric-value">{height_weight_bmi}</div>
             </div>
         </div>
     </div>
     
     <div class="section">
-        <div class="section-header">Analyse sante</div>
-        {alert_html if alert_html else '<p style="color: #666; padding: 10px;">Aucune alerte significative detectee.</p>'}
+        <div class="section-header">{_t(tr, "report.section.health_analysis")}</div>
+        {alert_html if alert_html else f'<p style="color: #666; padding: 10px;">{_t(tr, "report.no_alerts")}</p>'}
     </div>
     
     <div class="section">
-        <div class="section-header">Statistiques detaillees</div>
+        <div class="section-header">{_t(tr, "report.section.detailed_stats")}</div>
         {''.join(sections)}
     </div>
     
     <div class="footer">
-        <p><strong>Tableau de bord sante Fitbit</strong></p>
-        <p>Genere le {gen_date}</p>
+        <p><strong>{_t(tr, "footer.title")}</strong></p>
+        <p>{_t(tr, "app.generated_on", datetime=gen_date)}</p>
         <p style="margin-top: 10px; font-size: 8pt;">
-            Ce rapport est fourni a titre informatif uniquement.<br>
-            Consultez toujours un professionnel de sante qualifie pour les decisions medicales.
+            {_t(tr, "footer.disclaimer")}
         </p>
     </div>
     
@@ -1567,6 +1582,12 @@ def extract_and_process_upload(uploaded_file):
     return temp_dir
 
 def main():
+    # Language / i18n (default: English)
+    if "lang" not in st.session_state:
+        st.session_state["lang"] = "en"
+    st.session_state["_i18n"] = _load_translations(st.session_state.get("lang", "en"))
+    tr = st.session_state["_i18n"]
+
     # Initialiser session state
     if 'report_ready' not in st.session_state:
         st.session_state['report_ready'] = False
@@ -1581,59 +1602,66 @@ def main():
     
     # Sidebar - tout dans UN SEUL bloc
     with st.sidebar:
-        st.header("Chargement des donnees")
+        lang_label = _t(tr, "language.label")
+        lang = st.selectbox(
+            lang_label,
+            options=["en", "fr"],
+            format_func=lambda v: _t(tr, f"language.{v}"),
+            index=0 if st.session_state.get("lang") == "en" else 1,
+        )
+        if lang != st.session_state.get("lang"):
+            st.session_state["lang"] = lang
+            st.session_state["_i18n"] = _load_translations(lang)
+            tr = st.session_state["_i18n"]
+
+        st.header(_t(tr, "sidebar.data_upload"))
         
         uploaded_file = st.file_uploader(
-            "Uploader votre export Fitbit (zip)",
+            _t(tr, "sidebar.upload_label"),
             type=['zip'],
-            help="Telechargez votre dossier Takeout.zip de Fitbit. Le fichier sera traite automatiquement."
+            help=_t(tr, "sidebar.upload_help")
         )
         
         if uploaded_file is not None:
-            st.success(f"Fichier charge: {uploaded_file.name}")
+            st.success(_t(tr, "sidebar.file_uploaded", filename=uploaded_file.name))
         
         st.markdown("---")
-        st.markdown("**Confidentialite :**")
-        st.info("🔒 Vos donnees sont traitees uniquement en memoire. Aucun fichier n'est conserve sur le serveur.")
+        st.markdown(f"**{_t(tr, 'sidebar.privacy_title')} :**")
+        st.info(_t(tr, "sidebar.privacy_body"))
         
-        st.markdown("**Instructions :**")
-        st.markdown("""
-        1. Exportez vos donnees depuis l'application Fitbit
-        2. Telechargez le fichier ZIP ici (fichier temporaire)
-        3. Les graphiques se genereront automatiquement
-        4. Cliquez sur "Generer rapport" ci-dessous
-        """)
+        st.markdown(f"**{_t(tr, 'sidebar.instructions_title')} :**")
+        st.markdown(_t(tr, "sidebar.instructions_body"))
         
         st.markdown("---")
-        st.markdown("**Export PDF**")
+        st.markdown(f"**{_t(tr, 'sidebar.export_pdf_title')}**")
         
         # Bouton de generation
-        st.button("Generer et telecharger le rapport (PDF)", type="primary", use_container_width=True, on_click=on_generate_click)
+        st.button(_t(tr, "sidebar.generate_report"), type="primary", use_container_width=True, on_click=on_generate_click)
     
     st.markdown(f'''
     <div class="print-header">
-        <h1 style="color:#667eea; margin-bottom:5px">Tableau de bord sante Fitbit</h1>
+        <h1 style="color:#667eea; margin-bottom:5px">{_t(tr, "app.title")}</h1>
         <p style="color:#666; font-size:1em; margin:0">
-            Rapport detaille continu - Genere le {datetime.now().strftime('%d %B %Y a %H:%M')}
+            {_t(tr, "app.generated_on", datetime=datetime.now().strftime('%Y-%m-%d %H:%M'))}
         </p>
     </div>
     ''', unsafe_allow_html=True)
     
     # Determiner la source des donnees
     if uploaded_file is not None:
-        with st.spinner('Extraction du fichier ZIP...'):
+        with st.spinner(_t(tr, "status.extracting_zip")):
             base_path = extract_and_process_upload(uploaded_file)
         if base_path is None:
-            st.error("Impossible d'extraire les donnees du fichier. Verifiez le format.")
+            st.error(_t(tr, "error.extract_failed"))
             return
-        st.success("Donnees extraites avec succes!")
+        st.success(_t(tr, "success.data_extracted"))
     else:
         base_path = find_takeout_folder()
         if base_path is None:
-            st.info("📤 Aucune donnee disponible. Veuillez uploader votre fichier Takeout.zip depuis la barre laterale. Les donnees sont traitees temporairement et ne sont pas conservees.")
+            st.info(_t(tr, "info.no_data"))
             return
     
-    with st.spinner('Chargement des donnees detaillees...'):
+    with st.spinner(_t(tr, "status.loading_data")):
         profile = parse_profile(base_path)
         
         # Chargement des donnees continues detaillees
@@ -1654,7 +1682,7 @@ def main():
         # Reset pour permettre regeneration
         st.session_state['generate_clicked'] = False
         
-        with st.spinner("Generation des graphiques et du rapport..."):
+        with st.spinner(_t(tr, "status.generating_report")):
             # Generer les graphiques et les convertir en PNG
             chart_images = {}
             
@@ -1691,14 +1719,14 @@ def main():
             # Generer le HTML avec les images
             html_content = generate_printable_html(
                 profile, hr_summary_df, sleep_df, hrv_df, spo2_df, stress_df,
-                detailed_hr_df, detailed_steps_df, chart_images
+                detailed_hr_df, detailed_steps_df, chart_images, tr=tr
             )
             
             # Generer le PDF avec weasyprint
             pdf_bytes = generate_pdf_from_html(html_content)
             
             if pdf_bytes:
-                st.success("✅ Rapport PDF genere avec succes! Telechargement automatique...")
+                st.success(_t(tr, "success.pdf_generated"))
                 
                 # Auto-download using HTML/JS
                 import base64
@@ -1723,7 +1751,7 @@ def main():
                 
                 # Also show download button as fallback
                 st.download_button(
-                    label="📥 Telecharger manuellement (si le telechargement auto a echoue)",
+                    label=_t(tr, "download.fallback_manual_pdf"),
                     data=pdf_bytes,
                     file_name=filename,
                     mime="application/pdf",
@@ -1731,9 +1759,9 @@ def main():
                 )
             else:
                 # Fallback to HTML si PDF echoue
-                st.warning("Generation PDF indisponible, telechargement HTML propose")
+                st.warning(_t(tr, "warning.pdf_unavailable"))
                 st.download_button(
-                    label="📥 Telecharger le rapport (HTML)",
+                    label=_t(tr, "download.html_report"),
                     data=html_content.encode('utf-8'),
                     file_name=f"Rapport_sante_Fitbit_{datetime.now().strftime('%Y%m%d')}.html",
                     mime="text/html",
@@ -1741,13 +1769,13 @@ def main():
                 )
     
     # Informations
-    st.markdown('<div class="section-header">Informations</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{_t(tr, "section.information")}</div>', unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         name = profile.get('display_name', 'N/A') if profile else 'N/A'
-        st.metric("Nom", name)
+        st.metric(_t(tr, "metric.name"), name)
     
     with col2:
         if profile and 'date_of_birth' in profile:
@@ -1755,21 +1783,21 @@ def main():
                 dob = datetime.strptime(profile['date_of_birth'], '%Y-%m-%d')
                 age = int((datetime.now() - dob).days / 365.25)
                 gender = profile.get('gender', '')
-                st.metric("Age / Sexe", f"{age} ans / {gender}")
+                st.metric(_t(tr, "metric.age_gender"), f"{age} / {gender}")
             except:
-                st.metric("Age / Sexe", "N/A")
+                st.metric(_t(tr, "metric.age_gender"), _t(tr, "common.na"))
         else:
-            st.metric("Age / Sexe", "N/A")
+            st.metric(_t(tr, "metric.age_gender"), _t(tr, "common.na"))
     
     with col3:
         if profile:
             height = profile.get('height', 'N/A')
             if isinstance(height, (int, float)):
-                st.metric("Taille", f"{int(height)} cm")
+                st.metric(_t(tr, "metric.height"), f"{int(height)} cm")
             else:
-                st.metric("Taille", str(height))
+                st.metric(_t(tr, "metric.height"), str(height))
         else:
-            st.metric("Taille", "N/A")
+            st.metric(_t(tr, "metric.height"), _t(tr, "common.na"))
     
     with col4:
         if profile:
@@ -1777,32 +1805,32 @@ def main():
             if isinstance(weight, (int, float)):
                 height_m = profile.get('height', 175) / 100
                 bmi = weight / (height_m ** 2)
-                st.metric("Poids / IMC", f"{int(weight)} kg / {bmi:.1f}")
+                st.metric(_t(tr, "metric.weight_bmi"), f"{int(weight)} kg / {bmi:.1f}")
             else:
-                st.metric("Poids", str(weight))
+                st.metric(_t(tr, "metric.weight"), str(weight))
         else:
-            st.metric("Poids / IMC", "N/A")
+            st.metric(_t(tr, "metric.weight_bmi"), _t(tr, "common.na"))
     
     # Resume des donnees disponibles
     data_info = []
     if not detailed_hr_df.empty:
-        data_info.append(f"FC: {len(detailed_hr_df):,} lectures")
+        data_info.append(_t(tr, "data.hr_readings", count=len(detailed_hr_df)))
     if not detailed_steps_df.empty:
-        data_info.append(f"Pas: {len(detailed_steps_df):,} minutes")
+        data_info.append(_t(tr, "data.steps_minutes", count=len(detailed_steps_df)))
     if not sleep_df.empty:
-        data_info.append(f"Sommeil: {len(sleep_df)} nuits")
+        data_info.append(_t(tr, "data.sleep_nights", count=len(sleep_df)))
     if not hrv_df.empty:
-        data_info.append(f"VFC: {len(hrv_df)} jours")
+        data_info.append(_t(tr, "data.hrv_days", count=len(hrv_df)))
     if not spo2_df.empty:
-        data_info.append(f"SpO2: {len(spo2_df)} jours")
+        data_info.append(_t(tr, "data.spo2_days", count=len(spo2_df)))
     
     if data_info:
-        st.markdown("**Donnees disponibles:** " + " | ".join(data_info))
+        st.markdown(_t(tr, "data.available", items=" | ".join(data_info)))
     
     st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
     
     # Alertes sante
-    st.markdown('<div class="section-header">Analyse sante</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{_t(tr, "section.health_analysis")}</div>', unsafe_allow_html=True)
     
     alerts, warnings, info = analyze_health(hr_summary_df, sleep_df, hrv_df, spo2_df, stress_df)
     
@@ -1819,27 +1847,25 @@ def main():
             display_alert(i, 'info')
     
     if not any([alerts, warnings, info]):
-        st.info("Donnees insuffisantes pour l'analyse.")
+        st.info(_t(tr, "info.insufficient_data_analysis"))
     
     st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
     
     # Frequence cardiaque continue
-    st.markdown('<div class="section-header">Frequence cardiaque continue (detaillee)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{_t(tr, "section.hr_continuous")}</div>', unsafe_allow_html=True)
     
-    display_note("Graphique continu montrant toutes les lectures de frequence cardiaque. "
-                "Chaque point represente une mesure en temps reel. "
-                "Utilisez la souris pour zoomer sur des periodes specifiques.")
+    display_note(_t(tr, "note.hr_continuous"))
     
     if not detailed_hr_df.empty:
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Lectures totales", f"{len(detailed_hr_df):,}")
+            st.metric(_t(tr, "metric.total_readings"), f"{len(detailed_hr_df):,}")
         with col2:
-            st.metric("FC moyenne", f"{detailed_hr_df['bpm'].mean():.1f} bpm")
+            st.metric(_t(tr, "metric.avg_hr"), f"{detailed_hr_df['bpm'].mean():.1f} bpm")
         with col3:
-            st.metric("FC min", f"{detailed_hr_df['bpm'].min():.0f} bpm")
+            st.metric(_t(tr, "metric.min_hr"), f"{detailed_hr_df['bpm'].min():.0f} bpm")
         with col4:
-            st.metric("FC max", f"{detailed_hr_df['bpm'].max():.0f} bpm")
+            st.metric(_t(tr, "metric.max_hr"), f"{detailed_hr_df['bpm'].max():.0f} bpm")
         
         fig = create_continuous_hr_chart(detailed_hr_df)
         if fig:
@@ -1850,41 +1876,39 @@ def main():
         if hist_fig:
             st.plotly_chart(hist_fig, use_container_width=True)
     else:
-        st.info("Donnees de frequence cardiaque detaillees non disponibles.")
+        st.info(_t(tr, "info.no_hr_detailed"))
     
     st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
     
     # Activite continue
-    st.markdown('<div class="section-header">Activite continue (detaillee)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{_t(tr, "section.activity_continuous")}</div>', unsafe_allow_html=True)
     
-    display_note("Graphique continu montrant l'activite physique minute par minute. "
-                "Permet d'identifier les periodes d'activite et de repos.")
+    display_note(_t(tr, "note.activity_continuous"))
     
     if not detailed_steps_df.empty:
         col1, col2, col3 = st.columns(3)
         with col1:
             total_steps = detailed_steps_df['steps'].sum()
-            st.metric("Total pas", f"{int(total_steps):,}")
+            st.metric(_t(tr, "metric.total_steps"), f"{int(total_steps):,}")
         with col2:
             avg_daily = detailed_steps_df.groupby(detailed_steps_df['timestamp'].dt.date)['steps'].sum().mean()
-            st.metric("Moyenne quotidienne", f"{int(avg_daily):,}")
+            st.metric(_t(tr, "metric.daily_average"), f"{int(avg_daily):,}")
         with col3:
             active_minutes = len(detailed_steps_df[detailed_steps_df['steps'] > 0])
-            st.metric("Minutes actives", f"{active_minutes:,}")
+            st.metric(_t(tr, "metric.active_minutes"), f"{active_minutes:,}")
         
         fig = create_continuous_activity_chart(detailed_steps_df, detailed_cals_df)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Donnees d'activite detaillees non disponibles.")
+        st.info(_t(tr, "info.no_activity_detailed"))
     
     st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
     
     # Sommeil
-    st.markdown('<div class="section-header">Analyse du sommeil</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{_t(tr, "section.sleep_analysis")}</div>', unsafe_allow_html=True)
     
-    display_note("Duree et qualite du sommeil. Une duree de 7 a 9 heures est recommandee pour les adultes. "
-                "L'efficacite du sommeil (temps endormi / temps au lit) doit idealement etre superieure a 85%.")
+    display_note(_t(tr, "note.sleep_analysis"))
     
     if not sleep_df.empty:
         main_sleep = sleep_df[sleep_df['main_sleep'] == True]
@@ -1893,15 +1917,15 @@ def main():
         with col1:
             if 'minutes_asleep' in main_sleep.columns:
                 avg_hours = main_sleep['minutes_asleep'].mean() / 60
-                st.metric("Duree moyenne", f"{avg_hours:.1f} heures")
+                st.metric(_t(tr, "metric.avg_duration"), f"{avg_hours:.1f} {_t(tr, 'unit.hours')}")
         with col2:
             if 'efficiency' in main_sleep.columns:
                 avg_eff = main_sleep['efficiency'].mean()
-                st.metric("Efficacite", f"{avg_eff:.0f}%")
+                st.metric(_t(tr, "metric.efficiency"), f"{avg_eff:.0f}%")
         with col3:
             if not sleep_score_df.empty and 'overall_score' in sleep_score_df.columns:
                 avg_score = sleep_score_df['overall_score'].mean()
-                st.metric("Score de sommeil", f"{avg_score:.0f}/100")
+                st.metric(_t(tr, "metric.sleep_score"), f"{avg_score:.0f}/100")
         
         # Graphique de duree
         fig = create_sleep_chart(sleep_df)
@@ -1913,64 +1937,61 @@ def main():
         if stages_fig:
             st.plotly_chart(stages_fig, use_container_width=True)
     else:
-        st.info("Donnees de sommeil non disponibles.")
+        st.info(_t(tr, "info.no_sleep"))
     
     st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
     
     # VFC
-    st.markdown('<div class="section-header">Variabilite de la frequence cardiaque</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{_t(tr, "section.hrv")}</div>', unsafe_allow_html=True)
     
-    display_note("La VFC (RMSSD) indique la capacite de recuperation du systeme nerveux autonome. "
-                "Une VFC plus elevee est generalement associee a une meilleure recuperation et a moins de stress.")
+    display_note(_t(tr, "note.hrv"))
     
     if not hrv_df.empty and 'rmssd' in hrv_df.columns:
         col1, col2 = st.columns(2)
         with col1:
             avg_hrv = hrv_df['rmssd'].mean()
-            st.metric("RMSSD moyen", f"{avg_hrv:.1f} ms")
+            st.metric(_t(tr, "metric.avg_rmssd"), f"{avg_hrv:.1f} ms")
         with col2:
             latest_hrv = hrv_df['rmssd'].iloc[-1]
-            st.metric("Dernier RMSSD", f"{latest_hrv:.1f} ms")
+            st.metric(_t(tr, "metric.latest_rmssd"), f"{latest_hrv:.1f} ms")
         
         fig = create_hrv_chart(hrv_df)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Donnees de VFC non disponibles.")
+        st.info(_t(tr, "info.no_hrv"))
     
     st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
     
     # SpO2
-    st.markdown('<div class="section-header">Saturation en oxygene</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{_t(tr, "section.spo2")}</div>', unsafe_allow_html=True)
     
-    display_note("La saturation en oxygene (SpO2) indique la quantite d'oxygene transportee par le sang. "
-                "Une valeur normale est comprise entre 95% et 100%.")
+    display_note(_t(tr, "note.spo2"))
     
     if not spo2_df.empty:
         col1, col2, col3 = st.columns(3)
         with col1:
             avg_spo2 = spo2_df['average_value'].mean()
-            st.metric("SpO2 moyenne", f"{avg_spo2:.1f}%")
+            st.metric(_t(tr, "metric.avg_spo2"), f"{avg_spo2:.1f}%")
         with col2:
             min_spo2 = spo2_df['lower_bound'].min() if 'lower_bound' in spo2_df.columns else spo2_df['average_value'].min()
-            st.metric("SpO2 minimum", f"{min_spo2:.1f}%")
+            st.metric(_t(tr, "metric.min_spo2"), f"{min_spo2:.1f}%")
         with col3:
             max_spo2 = spo2_df['upper_bound'].max() if 'upper_bound' in spo2_df.columns else spo2_df['average_value'].max()
-            st.metric("SpO2 maximum", f"{max_spo2:.1f}%")
+            st.metric(_t(tr, "metric.max_spo2"), f"{max_spo2:.1f}%")
         
         fig = create_spo2_chart(spo2_df)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Donnees de SpO2 non disponibles.")
+        st.info(_t(tr, "info.no_spo2"))
     
     st.markdown('<div class="page-break"></div>', unsafe_allow_html=True)
     
     # Stress
-    st.markdown('<div class="section-header">Analyse du stress</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">{_t(tr, "section.stress")}</div>', unsafe_allow_html=True)
     
-    display_note("Le score de stress combine plusieurs metriques pour estimer le niveau de stress du corps. "
-                "Un score faible sur une periode prolongee peut indiquer un besoin de recuperation.")
+    display_note(_t(tr, "note.stress"))
     
     if not stress_df.empty:
         stress_data = stress_df[stress_df['STRESS_SCORE'] > 0]
@@ -1978,35 +1999,34 @@ def main():
             col1, col2, col3 = st.columns(3)
             with col1:
                 avg_stress = stress_data['STRESS_SCORE'].mean()
-                st.metric("Stress moyen", f"{avg_stress:.0f}/100")
+                st.metric(_t(tr, "metric.avg_stress"), f"{avg_stress:.0f}/100")
             with col2:
                 if 'SLEEP_POINTS' in stress_data.columns:
                     avg_sleep_pts = stress_data['SLEEP_POINTS'].mean()
-                    st.metric("Points sommeil", f"{avg_sleep_pts:.0f}")
+                    st.metric(_t(tr, "metric.sleep_points"), f"{avg_sleep_pts:.0f}")
             with col3:
                 if 'EXERTION_POINTS' in stress_data.columns:
                     avg_exert = stress_data['EXERTION_POINTS'].mean()
-                    st.metric("Points effort", f"{avg_exert:.0f}")
+                    st.metric(_t(tr, "metric.exertion_points"), f"{avg_exert:.0f}")
             
             fig = create_stress_chart(stress_df)
             if fig:
                 st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Donnees de stress presentes mais non valides.")
+            st.info(_t(tr, "info.stress_invalid"))
     else:
-        st.info("Donnees de stress non disponibles.")
+        st.info(_t(tr, "info.no_stress"))
     
     # Pied de page
     st.markdown(f'''
     <div style="text-align: center; margin-top: 50px; padding: 25px; color: #666;
                 border-top: 2px solid #eee; background: #f8f9fa; border-radius: 10px;">
-        <p style="font-size: 1.1em; margin-bottom: 10px;"><b>Tableau de bord sante Fitbit</b></p>
+        <p style="font-size: 1.1em; margin-bottom: 10px;"><b>{_t(tr, "footer.title")}</b></p>
         <p style="font-size: 0.9em; color: #888;">
-            Genere le {datetime.now().strftime('%d %B %Y a %H:%M')}
+            {_t(tr, "app.generated_on", datetime=datetime.now().strftime('%Y-%m-%d %H:%M'))}
         </p>
         <p style="font-size: 0.85em; color: #999; margin-top: 15px;">
-            Ce rapport est fourni a titre informatif uniquement.<br>
-            Consultez toujours un professionnel de sante qualifie pour les decisions medicales.
+            {_t(tr, "footer.disclaimer")}
         </p>
     </div>
     ''', unsafe_allow_html=True)

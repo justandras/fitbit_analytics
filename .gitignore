@@ -8,12 +8,6 @@ env/
 venv/
 ENV/
 
-# Data files (user's Fitbit data)
-Takeout*/
-*.zip
-*.csv
-*.json
-
 # Output files
 *.pdf
 *.html
