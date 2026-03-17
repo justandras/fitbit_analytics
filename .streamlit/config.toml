@@ -1,0 +1,5 @@
+[server]
+# Streamlit's default is 200MB. Set high to effectively remove the limit.
+# Value is in megabytes.
+maxUploadSize = 10240
+
